@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# Helper script to sample and create image dataset
+# Usage - ./sampleData.sh <Training_sample_size> <Test_sample_size>
+
 total=$(($1+$2))
 mkdir -p data
 
