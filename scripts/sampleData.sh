@@ -10,9 +10,9 @@ mkdir -p data/train/Boots-Ankle; find ~/Downloads/ut-zap50k-images/Boots/Ankle -
 mkdir -p data/test/Boots-Ankle; find ~/Downloads/ut-zap50k-images/Boots/Ankle -type f -printf '"%p"\n' | head -$total | tail -$2 | xargs cp -t data/test/Boots-Ankle/
 
 mkdir -p data/train/Boots-Knee; find ~/Downloads/ut-zap50k-images/Boots/Knee\ High -type f -printf '"%p"\n' | head -$1 | xargs cp -t data/train/Boots-Knee/
-find ~/Downloads/ut-zap50k-images/Boots/Over\ the\ Knee -type f -printf '"%p"\n' | head -$1 | xargs cp -t data/train/Boots-Knee/
+#find ~/Downloads/ut-zap50k-images/Boots/Over\ the\ Knee -type f -printf '"%p"\n' | head -$1 | xargs cp -t data/train/Boots-Knee/
 mkdir -p data/test/Boots-Knee; find ~/Downloads/ut-zap50k-images/Boots/Knee\ High -type f -printf '"%p"\n' | head -$total | tail -$2 | xargs cp -t data/test/Boots-Knee/
-find ~/Downloads/ut-zap50k-images/Boots/Over\ the\ Knee -type f -printf '"%p"\n' | head -$total | tail -$2 | xargs cp -t data/test/Boots-Knee/
+#find ~/Downloads/ut-zap50k-images/Boots/Over\ the\ Knee -type f -printf '"%p"\n' | head -$total | tail -$2 | xargs cp -t data/test/Boots-Knee/
 
 mkdir -p data/train/Boots-Midcalf; find ~/Downloads/ut-zap50k-images/Boots/Mid-Calf -type f -printf '"%p"\n' | head -$1 | xargs cp -t data/train/Boots-Midcalf/
 mkdir -p data/test/Boots-Midcalf; find ~/Downloads/ut-zap50k-images/Boots/Mid-Calf -type f -printf '"%p"\n' | head -$total | tail -$2 | xargs cp -t data/test/Boots-Midcalf/
@@ -20,9 +20,9 @@ mkdir -p data/test/Boots-Midcalf; find ~/Downloads/ut-zap50k-images/Boots/Mid-Ca
 mkdir -p data/train/Sandals-Flat; find ~/Downloads/ut-zap50k-images/Sandals/Flat -type f -printf '"%p"\n' | head -$1 | xargs cp -t data/train/Sandals-Flat
 mkdir -p data/test/Sandals-Flat; find ~/Downloads/ut-zap50k-images/Sandals/Flat -type f -printf '"%p"\n' | head -$total | tail -$2 | xargs cp -t data/test/Sandals-Flat
 
-mkdir -p data/train/Sandals-Heel; find ~/Downloads/ut-zap50k-images/Sandals/Heel -type f -printf '"%p"\n' | head -$1 | xargs cp -t data/train/Sandals-Heel
+mkdir -p data/train/Sandals-Heel; #find ~/Downloads/ut-zap50k-images/Sandals/Heel -type f -printf '"%p"\n' | head -$1 | xargs cp -t data/train/Sandals-Heel
 find ~/Downloads/ut-zap50k-images/Shoes/Heels -type f -printf '"%p"\n' | head -$1 | xargs cp -t data/train/Sandals-Heel
-mkdir -p data/test/Sandals-Heel; find ~/Downloads/ut-zap50k-images/Sandals/Heel -type f -printf '"%p"\n' | head -$total | tail -$2 | xargs cp -t data/test/Sandals-Heel
+mkdir -p data/test/Sandals-Heel; #find ~/Downloads/ut-zap50k-images/Sandals/Heel -type f -printf '"%p"\n' | head -$total | tail -$2 | xargs cp -t data/test/Sandals-Heel
 find ~/Downloads/ut-zap50k-images/Shoes/Heels -type f -printf '"%p"\n' | head -$total | tail -$2 | xargs cp -t data/test/Sandals-Heel
 
 mkdir -p data/train/Clogs-Mules; find ~/Downloads/ut-zap50k-images/Shoes/Clogs\ and\ Mules -type f -printf '"%p"\n' | head -$1 | xargs cp -t data/train/Clogs-Mules
