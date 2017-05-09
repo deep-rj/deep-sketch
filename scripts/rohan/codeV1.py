@@ -15,7 +15,7 @@ from keras.optimizers import Adam#, SGD, RMSprop, Adagrad
 np.seterr(divide='ignore', invalid='ignore')
 #%%
 class ProjectConfig:
-    basepath      = os.path.join(os.getcwd(),"../../data")
+    basepath      = os.path.join(os.getcwd(),"../../../data")
     imsize        = (32,) * 2 # n x n square images, VGG default is 224x224
     tsize         = imsize + (3,)
     trainfolder   = os.path.join(basepath, 'train')

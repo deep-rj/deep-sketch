@@ -13,10 +13,10 @@ import os, time, numpy as np, scipy, random, tqdm, pandas as pd, socket
 import matplotlib.pyplot as plt
 from keras.optimizers import Adam#, SGD, RMSprop, Adagrad
 np.seterr(divide='ignore', invalid='ignore')
-os.environ['CUDA_VISIBLE_DEVICES'] = 3
+#os.environ['CUDA_VISIBLE_DEVICES'] = "1"
 #%%
 class ProjectConfig:
-    basepath      = os.path.join(os.getcwd(),"../../data")
+    basepath      = os.path.join(os.getcwd(),"../../../data")
     imsize        = (32,) * 2 # n x n square images, VGG default is 224x224
     tsize         = imsize + (3,)
     trainfolder   = os.path.join(basepath, 'train')
@@ -24,15 +24,15 @@ class ProjectConfig:
 
 # Model settings    
 cfg = ProjectConfig()
-cfg.vgglayers     = 1        # Number of VGG layers to create, 0-5 layers
-cfg.xferlearning  = -1       # Enable transfer learning up to layer n (max 12, -1 = off)
-cfg.freeze_conv   = True     # Freeze convolutional layers
+cfg.vgglayers     = 2        # Number of VGG layers to create, 0-5 layers
+cfg.xferlearning  = 3       # Enable transfer learning up to layer n (max 12, -1 = off)
+cfg.freeze_conv   = False     # Freeze convolutional layers
 cfg.fclayersize   = 128      # Size of fully connected layers
 cfg.fclayers      = 2        # Number of fully connected layers
-cfg.fcdropout     = 0.0      # Dropout factor for fully connected layers
+cfg.fcdropout     = 0.25      # Dropout factor for fully connected layers
  
 # Optimizer settings
-optimizer = Adam()   
+optimizer = Adam(lr=0.00001)   
 cfg.batch_size, cfg.nb_epoch = 32, 10000
 cfg.trainstats    = os.path.join(cfg.basepath, 'trainstats-%s.csv' % socket.gethostname())        
 cfg.batchnorm     = True    # Batch normalization (incompatible with filter viz)
@@ -50,7 +50,7 @@ datagen = ImageDataGenerator(
     featurewise_std_normalization=False,    # divide inputs by std of the dataset
     samplewise_std_normalization=False,     # divide each input by its std
     zca_whitening=False,                    # apply ZCA whitening
-    rotation_range=30,                       # randomly rotate images in the range (degrees, 0 to 180)
+    rotation_range=45,                       # randomly rotate images in the range (degrees, 0 to 180)
     width_shift_range=0.1,                  # randomly shift images horizontally (fraction of total width)
     height_shift_range=0.1,                 # randomly shift images vertically (fraction of total height)
     horizontal_flip=True,                   # randomly flip images
