@@ -17,7 +17,8 @@ np.seterr(divide='ignore', invalid='ignore')
 #%%
 class ProjectConfig:
     basepath      = os.path.join(os.getcwd(),"../../../data")
-    imsize        = (32,) * 2 # n x n square images, VGG default is 224x224
+#    basepath      = os.path.join(os.getcwd(),"Documents/data")
+    imsize        = (136,102) # n x n square images, VGG default is 224x224
     tsize         = imsize + (3,)
     trainfolder   = os.path.join(basepath, 'train')
     testfolder    = os.path.join(basepath, 'test')
@@ -25,7 +26,7 @@ class ProjectConfig:
 # Model settings    
 cfg = ProjectConfig()
 cfg.vgglayers     = 2        # Number of VGG layers to create, 0-5 layers
-cfg.xferlearning  = 3       # Enable transfer learning up to layer n (max 12, -1 = off)
+cfg.xferlearning  = 1       # Enable transfer learning up to layer n (max 12, -1 = off)
 cfg.freeze_conv   = False     # Freeze convolutional layers
 cfg.fclayersize   = 128      # Size of fully connected layers
 cfg.fclayers      = 2        # Number of fully connected layers
@@ -33,14 +34,14 @@ cfg.fcdropout     = 0.5      # Dropout factor for fully connected layers
  
 # Optimizer settings
 optimizer = Adam(lr=0.00005)   
-cfg.batch_size, cfg.nb_epoch = 50, 10000
+cfg.batch_size, cfg.nb_epoch = 32, 10000
 cfg.trainstats    = os.path.join(cfg.basepath, 'trainstats-%s.csv' % socket.gethostname())        
-cfg.batchnorm     = True    # Batch normalization (incompatible with filter viz)
+cfg.batchnorm     = False    # Batch normalization (incompatible with filter viz)
 cfg.saveloadmodel = True     # Save/load models to reduce training time
 cfg.spercls       = 100      # Number of samples per class
 
 # Visualization settings
-cfg.vizfilt_timeout = 3      # Decrease for speed, increase for better viz. 0 = off.
+cfg.vizfilt_timeout = 60      # Decrease for speed, increase for better viz. 0 = off.
 
 #%% Image data augmentation 
 from keras.preprocessing.image import ImageDataGenerator
@@ -51,8 +52,8 @@ datagen = ImageDataGenerator(
     samplewise_std_normalization=False,     # divide each input by its std
     zca_whitening=False,                    # apply ZCA whitening
     rotation_range=15,                       # randomly rotate images in the range (degrees, 0 to 180)
-    width_shift_range=0.1,                  # randomly shift images horizontally (fraction of total width)
-    height_shift_range=0.1,                 # randomly shift images vertically (fraction of total height)
+    width_shift_range=0.2,                  # randomly shift images horizontally (fraction of total width)
+    height_shift_range=0.2,                 # randomly shift images vertically (fraction of total height)
     horizontal_flip=True,                   # randomly flip images
     vertical_flip=False)                     # randomly flip images
 #%% ------ GPU memory fix -------
@@ -100,6 +101,7 @@ class DataSet:
     
 dataset = DataSet().scan()
 #%% Load train data
+from skimage.color import rgb2hsv
 def load_data(basepath, samples_per_class=3):
     """Loads image data using folder names as class names
        Beware: make sure all images are the same size, or resize them manually"""
@@ -112,6 +114,8 @@ def load_data(basepath, samples_per_class=3):
             if '.jpg' not in f.lower(): continue
             try: 
                 im = scipy.misc.imread(os.path.join(root, f))
+                # Convert RGB to HSV to better isolate influence of color
+                im = rgb2hsv(im)
                 im = scipy.misc.imresize(im, cfg.imsize, interp='bicubic')                
             except OSError:
                 print("Warning: corrupt file %s" % os.path.join(root, f))
@@ -333,7 +337,7 @@ def test_prediction(im=None, y=None):
     if im is None: im, y = X_train[t_img], Y_train[t_img]
     pred = model.predict(np.expand_dims(im, 0))
     cls = np.argmax(y)
-    explainer.explain(im, cls)    
+    if random.randint(0, 10) == 0: explainer.explain(im, cls)    
     print("Actual: %s(%d)" % (obj_classes[cls], cls))
     for cls in list(reversed(np.argsort(pred)[0]))[:5]:
         conf = float(pred[0, cls])/pred.sum()
@@ -366,3 +370,4 @@ for e in range(cfg.nb_epoch):
     t_ind = random.randint(0, len(X_train) - 1)
     if True or random.randint(0, 10) == 0: test_prediction(X_train[t_ind], Y_train[t_ind])
 #    if e % 30 == 29 and cfg.vizfilt_timeout > 0: vizfilt.viz_filters()
+#    if e % 10 == 0 and cfg.vizfilt_timeout > 0: vizfilt.viz_filters(10)
