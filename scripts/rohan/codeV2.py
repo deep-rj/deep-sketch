@@ -11,7 +11,7 @@
 """    
 import os, time, numpy as np, scipy, random, tqdm, pandas as pd, socket
 import matplotlib.pyplot as plt
-from keras.optimizers import Adam#, SGD, RMSprop, Adagrad
+from keras.optimizers import Adam, SGD, RMSprop, Adagrad
 np.seterr(divide='ignore', invalid='ignore')
 #os.environ['CUDA_VISIBLE_DEVICES'] = "1"
 #%%
@@ -25,18 +25,18 @@ class ProjectConfig:
 
 # Model settings    
 cfg = ProjectConfig()
-cfg.vgglayers     = 2        # Number of VGG layers to create, 0-5 layers
-cfg.xferlearning  = 1       # Enable transfer learning up to layer n (max 12, -1 = off)
+cfg.vgglayers     = 3        # Number of VGG layers to create, 0-5 layers
+cfg.xferlearning  = 3       # Enable transfer learning up to layer n (max 12, -1 = off)
 cfg.freeze_conv   = False     # Freeze convolutional layers
 cfg.fclayersize   = 128      # Size of fully connected layers
 cfg.fclayers      = 2        # Number of fully connected layers
 cfg.fcdropout     = 0.5      # Dropout factor for fully connected layers
  
 # Optimizer settings
-optimizer = Adam(lr=0.00005)   
+optimizer = Adagrad(lr=0.00005)   
 cfg.batch_size, cfg.nb_epoch = 32, 10000
 cfg.trainstats    = os.path.join(cfg.basepath, 'trainstats-%s.csv' % socket.gethostname())        
-cfg.batchnorm     = False    # Batch normalization (incompatible with filter viz)
+cfg.batchnorm     = True    # Batch normalization (incompatible with filter viz)
 cfg.saveloadmodel = True     # Save/load models to reduce training time
 cfg.spercls       = 100      # Number of samples per class
 
@@ -101,7 +101,7 @@ class DataSet:
     
 dataset = DataSet().scan()
 #%% Load train data
-from skimage.color import rgb2hsv
+from skimage.color import rgb2hsv, hsv2rgb
 def load_data(basepath, samples_per_class=3):
     """Loads image data using folder names as class names
        Beware: make sure all images are the same size, or resize them manually"""
@@ -116,6 +116,7 @@ def load_data(basepath, samples_per_class=3):
                 im = scipy.misc.imread(os.path.join(root, f))
                 # Convert RGB to HSV to better isolate influence of color
                 im = rgb2hsv(im)
+                im[0:101, 0:135, [0,1]] = 0
                 im = scipy.misc.imresize(im, cfg.imsize, interp='bicubic')                
             except OSError:
                 print("Warning: corrupt file %s" % os.path.join(root, f))
@@ -238,7 +239,7 @@ class Heatmap:
         return np.array(masks)
         
     def explain_prediction_heatmap(self, im, actual):
-        plt.imshow(im), plt.xticks([]), plt.yticks([]), plt.title('Full image'), plt.show()
+        plt.imshow(hsv2rgb(im)), plt.xticks([]), plt.yticks([]), plt.title('Full image'), plt.show()
         masks = np.concatenate([self.make_masks(im, n=i) for i in (9, 7, 5, 3, 2)])
         masknorm = masks.sum(axis=0)
         heatmaps = np.zeros((self.nclasses,) + im.shape[:2])
@@ -248,7 +249,7 @@ class Heatmap:
                 heatmaps[c] += (prediction[0][c]*m)
         for h in heatmaps: h = h / masknorm
         fig, axes = plt.subplots(2, self.nclasses + 1, figsize=(20, 5))
-        axes[0,0].imshow(im), axes[1,0].imshow(im)        
+        axes[0,0].imshow(hsv2rgb(im)), axes[1,0].imshow(hsv2rgb(im))        
         axes[0,0].set_title(actual)
         hide_axes(axes[0,0]), hide_axes(axes[1,0])       
         predictions = np.sum(heatmaps, axis=(1,2,))
@@ -258,7 +259,7 @@ class Heatmap:
             h = skimage.exposure.equalize_adapthist(h)
             h = skimage.filters.gaussian(h, 1) # Change this for global mask smoothing
             axes[0, n+1].imshow(gray2rgb(h))
-            axes[1, n+1].imshow(gray2rgb(h) * im * (0.5 + 0.5*predictions[i]))  
+            axes[1, n+1].imshow(gray2rgb(h) * hsv2rgb(im) * (0.5 + 0.5*predictions[i]))  
             hide_axes(axes[0, n+1]), hide_axes(axes[1, n+1])        
             axes[0, n+1].set_title(self.obj_classes[i] + ': %0.1f%%' % (100*predictions[i]/predictions.sum()))
         fig.tight_layout()
@@ -337,7 +338,7 @@ def test_prediction(im=None, y=None):
     if im is None: im, y = X_train[t_img], Y_train[t_img]
     pred = model.predict(np.expand_dims(im, 0))
     cls = np.argmax(y)
-    if random.randint(0, 10) == 0: explainer.explain(im, cls)    
+    explainer.explain(im, cls)    
     print("Actual: %s(%d)" % (obj_classes[cls], cls))
     for cls in list(reversed(np.argsort(pred)[0]))[:5]:
         conf = float(pred[0, cls])/pred.sum()
