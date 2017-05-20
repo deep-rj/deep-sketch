@@ -1,4 +1,4 @@
-""" Northwestern MSiA 490 Deep learning 
+""" Northwestern MSiA 490 Deep learning  
     Assignment #2 starter code, Spring 2017
     This code demonstrates the use of transfer learning to speed up
     the training process for a convolutional neural network.

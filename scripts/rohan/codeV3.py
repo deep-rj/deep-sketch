@@ -3,45 +3,55 @@
     This code demonstrates the use of transfer learning to speed up
     the training process for a convolutional neural network.
     Notes:
+        - Heatmaps may appear black in the first few epochs. Run to ~500 to get decent maps.
+        - Watch out for memory usage. Big jobs get terminated by the system when memory is low.
         - The native image size is 224x224 for VGG, resize/crop your images to match
         - Filter visualization is slow, change cfg.vizfilt_timeout for more speed or accuracy
-        - Be sure to rename/delete the basepath when changing model parameters, e.g. layers
+        - Be sure to rename/delete the basepath when changing model parameters, e.g. layers or random labels
         - Change cfg.spercls to use larger/smaller batches
         - Filter visualization is not compatible with batch normalization
+        - 3 step process: (1) Overfit training set (min size), (2) Fit random labels (max size), (3) Regularize for test/validation set
 """    
 import os, time, numpy as np, scipy, random, tqdm, pandas as pd, socket
 import matplotlib.pyplot as plt
 from keras.optimizers import Adam#, SGD, RMSprop, Adagrad
 np.seterr(divide='ignore', invalid='ignore')
-#os.environ['CUDA_VISIBLE_DEVICES'] = "1"
 #%%
 class ProjectConfig:
     basepath      = os.path.join(os.getcwd(),"../../../data")
 #    basepath      = os.path.join(os.getcwd(),"Documents/data")
-    imsize        = (136,102) # n x n square images, VGG default is 224x224
-    tsize         = imsize + (1,)
+    imsize        = (136,102) # VGG default is 224x224
+    tsize         = imsize + (3,)
     trainfolder   = os.path.join(basepath, 'train')
-    testfolder    = os.path.join(basepath, 'test')
+    testfolder    = os.path.join(basepath, 'test') # Set test = train to overfit train data
 
 # Model settings    
 cfg = ProjectConfig()
 cfg.vgglayers     = 2        # Number of VGG layers to create, 0-5 layers
-cfg.xferlearning  = -1       # Enable transfer learning up to layer n (max 12, -1 = off)
-cfg.freeze_conv   = False     # Freeze convolutional layers
-cfg.fclayersize   = 128      # Size of fully connected layers
-cfg.fclayers      = 2        # Number of fully connected layers
-cfg.fcdropout     = 0.5      # Dropout factor for fully connected layers
+cfg.xferlearning  = 1       # Enable transfer learning up to layer n (max 12, -1 = off)
+cfg.freeze_conv   = False    # Freeze convolutional layers
+cfg.fclayersize   = 128      # Size of fully connected (FC) layers
+cfg.fclayers      = 1        # Number of FC layers
+cfg.fcdropout     = 0.0      # Dropout regularization factor for FC layers
+cfg.l1            = 0.0      # L1 regularization for FC
+cfg.l2            = 0.0      # L2 regularization for FC
+cfg.randomlbls    = False    # Random labels (remember to rename/delete existing data folder)
  
 # Optimizer settings
 optimizer = Adam(lr=0.00005)   
-cfg.batch_size, cfg.nb_epoch = 32, 10000
-cfg.trainstats    = os.path.join(cfg.basepath, 'trainstats-%s.csv' % socket.gethostname())        
+cfg.batch_size, cfg.nb_epoch = 50, 10000 # Change for early stopping regularization
 cfg.batchnorm     = False    # Batch normalization (incompatible with filter viz)
 cfg.saveloadmodel = True     # Save/load models to reduce training time
-cfg.spercls       = 100      # Number of samples per class
+cfg.spercls       = 300      # Number of samples per class
 
 # Visualization settings
-cfg.vizfilt_timeout = 60      # Decrease for speed, increase for better viz. 0 = off.
+cfg.hsv           = True    # Convert images to Hue/Saturation/Value to be more robust to colors
+cfg.vizfilt_timeout = 3      # Decrease for speed, increase for better viz. 0 = off.
+
+# Model checkpointing/stats
+cfg.modelarch     = 'vgg%d-fcl%d-fcs%d-%s-%s' % (cfg.vgglayers, cfg.fclayers, cfg.fclayersize, 'hsv' if cfg.hsv else 'rgb', socket.gethostname())
+cfg.modelid       = os.path.join(cfg.basepath, 'model-%s.h5' % cfg.modelarch)
+cfg.trainstats    = os.path.join(cfg.basepath, 'trainstats-%s.csv' % cfg.modelarch)        
 
 #%% Image data augmentation 
 from keras.preprocessing.image import ImageDataGenerator
@@ -51,28 +61,38 @@ datagen = ImageDataGenerator(
     featurewise_std_normalization=False,    # divide inputs by std of the dataset
     samplewise_std_normalization=False,     # divide each input by its std
     zca_whitening=False,                    # apply ZCA whitening
-    rotation_range=15,                       # randomly rotate images in the range (degrees, 0 to 180)
-    width_shift_range=0.1,                  # randomly shift images horizontally (fraction of total width)
-    height_shift_range=0.1,                 # randomly shift images vertically (fraction of total height)
-    horizontal_flip=True,                   # randomly flip images
-    vertical_flip=False)                     # randomly flip images
-#%% ------ GPU memory fix -------
+    rotation_range=0,                       # randomly rotate images in the range (degrees, 0 to 180)
+    width_shift_range=0.0,                  # randomly shift images horizontally (fraction of total width)
+    height_shift_range=0.0,                 # randomly shift images vertically (fraction of total height)
+    horizontal_flip=False,                  # randomly flip images
+    vertical_flip=False)                    # randomly flip images
+#%% ------ CPU/GPU memory fix -------
 import tensorflow as tf, keras.backend.tensorflow_backend as ktf
 def get_session(gpu_fraction=0.25):
     gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_fraction, allow_growth=True)
     return tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
 ktf.set_session(get_session())
+
+import psutil
+def check_memusage():
+    process = psutil.Process(os.getpid())
+    pctused = 100*process.memory_info().rss / psutil.virtual_memory().total
+    if pctused > 50:
+        print('**** High memory usage detected***')
+        print('Please check your code for memory leaks. Percent memory used: ', pctused)
 #%% Create demo data
 def makedata(basepath):
+    if os.path.exists(basepath): return
     from keras.datasets import cifar10
-    (X_train, y_train), (X_test, y_test) = cifar10.load_data()    
+    (X_train, y_train), (X_test, y_test) = cifar10.load_data()
+    if cfg.randomlbls: y_train = np.random.randint(0, len(np.unique(y_train)), y_train.shape)
     obj_classes = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck'] 
     for (X_data, y_data, bp) in [(X_train, y_train, cfg.trainfolder), (X_test, y_test, cfg.testfolder)]:
         for c in obj_classes: os.makedirs(os.path.join(bp, c), exist_ok=True)
         for i, (im, lbl) in tqdm.tqdm(enumerate(zip(X_data, y_data)), desc='Making data folder', total=len(y_data)):
             pn = os.path.join(bp, obj_classes[int(lbl)], "%d.png" % i)
             if not os.path.exists(pn): scipy.misc.imsave(pn, scipy.misc.imresize(im, cfg.imsize, interp='bicubic'))
-#makedata(cfg.basepath)
+#makedata(cfg.basepath) # Comment out this line to use your own data
 #%% Dataset loader
 class DataSet:
     def __init__(self):
@@ -101,11 +121,10 @@ class DataSet:
     
 dataset = DataSet().scan()
 #%% Load train data
-from skimage.color import rgb2gray
 def load_data(basepath, samples_per_class=3):
     """Loads image data using folder names as class names
        Beware: make sure all images are the same size, or resize them manually"""
-    import scipy.misc
+    import scipy.misc, skimage.color
     obj_classes = sorted([x for x in os.listdir(basepath) if x[0] != '.'])
     xdata, ydata = [], []
     for root, dirs, files in tqdm.tqdm(os.walk(basepath), mininterval=3, desc='Loading batch data', total=len(obj_classes)):
@@ -114,9 +133,10 @@ def load_data(basepath, samples_per_class=3):
             if '.jpg' not in f.lower(): continue
             try: 
                 im = scipy.misc.imread(os.path.join(root, f))
-                im = scipy.misc.imresize(im, cfg.imsize, interp='bicubic')                
-                # Convert RGB to Grayscale to better isolate influence of color
-                im = rgb2gray(im).reshape(cfg.tsize)                
+                im = scipy.misc.imresize(im, cfg.imsize, interp='bicubic')
+                if cfg.hsv:
+                    im = skimage.color.rgb2hsv(im)
+                    im[0:cfg.imsize[0], 0:cfg.imsize[1], [0,1]] = 0
             except OSError:
                 print("Warning: corrupt file %s" % os.path.join(root, f))
                 continue
@@ -137,16 +157,16 @@ from keras.utils import np_utils
 X_test, y_test, obj_classes = load_data(cfg.testfolder, samples_per_class=99999)
 class_to_idx = dict([(y, x) for (x,y) in enumerate(obj_classes)])
 img_rows, img_cols, img_channels = X_test.shape[1:]
-print("Image shape - {} {} {} ".format(img_rows, img_cols, img_channels))
 Y_test  = np_utils.to_categorical(y_test, len(obj_classes))
 
 #%% VGG net definition
 # VGG net definition starts here. Change the vgglayers to set how many layers to transfer
 from keras.models import Model
-from keras.layers import Flatten, Dense, Input
-from keras.layers import Convolution2D, MaxPooling2D, BatchNormalization
+from keras.regularizers import l1_l2
+from keras.layers import Flatten, Dense, Input, Convolution2D, MaxPooling2D, BatchNormalization
 
 img_input = Input(shape=cfg.tsize)
+if cfg.vgglayers == 0: x = img_input 
 if cfg.vgglayers >= 1: # Block 1
     x = Convolution2D(64, (3, 3), activation='relu', padding='same', name='block1_conv1')(img_input)
     x = Convolution2D(64, (3, 3), activation='relu', padding='same', name='block1_conv2')(x)
@@ -177,7 +197,7 @@ if cfg.vgglayers >= 5: # Block 5
     if cfg.batchnorm: x = BatchNormalization()(x)
     
 x = Flatten(name='flatten')(x)
-for i in range(cfg.fclayers): x = Dense(cfg.fclayersize)(x)
+for i in range(cfg.fclayers): x = Dense(cfg.fclayersize, activation='relu', kernel_regularizer=l1_l2(cfg.l1, cfg.l2))(x)
 x = Dense(len(obj_classes), activation='softmax', name='predictions')(x)
 
 inputs = img_input
@@ -206,6 +226,7 @@ def viz_losses(stats):
     ax1.plot(stats['Test loss'].values, label='Test loss', color='green')
     ax1.set_yscale('log')
     ax2.plot(stats['Accuracy'].values, label='Test accuracies', color='red')
+    ax2.plot(stats['Train accuracy'].values, label='Train accuracies', color='blue')
     ax2.axhline(1.0/len(obj_classes), linestyle='dashed', color='gray')
     ax2.text(0, 1.0/len(obj_classes), 'Chance')
     ax2.axhline(np.max(stats['Accuracy']), linestyle='dashed', color='red')
@@ -213,7 +234,9 @@ def viz_losses(stats):
     ax2.set_ylim([0, 1])
     ax2.set_title('Accuracy: %0.2f%%' % (100.0*stats['Accuracy'].values[-1]))     
     ax1.legend(), ax2.legend()
-    plt.show()
+    plt.savefig(os.path.join(cfg.basepath, 'loss-%s.png' % cfg.modelarch))
+    plt.show()    
+    plt.close()
 #%% Explanations
 import skimage.exposure, skimage.filters
 from skimage.color import gray2rgb
@@ -238,18 +261,21 @@ class Heatmap:
         return np.array(masks)
         
     def explain_prediction_heatmap(self, im, actual):
-        plt.imshow(im.reshape(cfg.imsize), cmap='gray'), plt.xticks([]), plt.yticks([]), plt.title('Full image'), plt.show()
+        import skimage.color
+        def hsv(im): return skimage.color.hsv2rgb(im) if cfg.hsv else im
+        plt.imshow(hsv(im)), plt.xticks([]), plt.yticks([]), plt.title('Full image'), plt.show(), plt.close()
         masks = np.concatenate([self.make_masks(im, n=i) for i in (9, 7, 5, 3, 2)])
         masknorm = masks.sum(axis=0)
         heatmaps = np.zeros((self.nclasses,) + im.shape[:2])
         for m in masks:
-            prediction = self.model.predict(np.expand_dims((im.reshape(cfg.imsize)*m).reshape(im.shape), 0))
+            prediction = self.model.predict(np.expand_dims(im*gray2rgb(m), 0))
             for c in range(self.nclasses):
                 heatmaps[c] += (prediction[0][c]*m)
         for h in heatmaps: h = h / masknorm
         fig, axes = plt.subplots(2, self.nclasses + 1, figsize=(20, 5))
-        axes[0,0].imshow(im.reshape(cfg.imsize), cmap='gray'), axes[1,0].imshow(im.reshape(cfg.imsize), cmap='gray')        
+        axes[0,0].imshow(hsv(im)), axes[1,0].imshow(im)        
         axes[0,0].set_title(actual)
+        axes[1,0].set_title('HSV' if cfg.hsv else 'RGB')        
         hide_axes(axes[0,0]), hide_axes(axes[1,0])       
         predictions = np.sum(heatmaps, axis=(1,2,))
         predictions /= predictions.max()
@@ -257,13 +283,13 @@ class Heatmap:
             h = ((255 * heatmaps[i])/heatmaps[i].max()).astype('uint16')
             h = skimage.exposure.equalize_adapthist(h)
             h = skimage.filters.gaussian(h, 1) # Change this for global mask smoothing
-            axes[0, n+1].imshow(h, cmap='gray')
-            print(((h * im.reshape(cfg.imsize)).reshape(im.shape) * (0.5 + 0.5*predictions[i])).shape)
-            axes[1, n+1].imshow(((h * im.reshape(cfg.imsize)).reshape(im.shape) * (0.5 + 0.5*predictions[i])).reshape(cfg.imsize), cmap='gray')  
+            axes[0, n+1].imshow(gray2rgb(h))
+            axes[1, n+1].imshow(gray2rgb(h) * hsv(im) * (0.5 + 0.5*predictions[i]))  
             hide_axes(axes[0, n+1]), hide_axes(axes[1, n+1])        
             axes[0, n+1].set_title(self.obj_classes[i] + ': %0.1f%%' % (100*predictions[i]/predictions.sum()))
         fig.tight_layout()
         plt.show()
+        plt.close()
         return heatmaps
 
 class Viz_filters:
@@ -316,7 +342,9 @@ class Viz_filters:
                 for j in range(nbfilters):
                     plt.subplot(1, nbfilters, j + 1)
                     self.viz_filter_max(layer_name, random.randint(0, nfilters-1), timeout=cfg.vizfilt_timeout)
-                plt.show()
+                plt.savefig(os.path.join(cfg.basepath, 'filters-%s-%s.png' % (cfg.modelarch, layer_name))) 
+                plt.show()                
+                plt.close()
         except KeyboardInterrupt: return
 
 class Explainer:
@@ -346,13 +374,13 @@ def test_prediction(im=None, y=None):
     return pred
 #%% Training code
 datagen.fit(X_test)
-cfg.modelid = os.path.join(cfg.basepath, 'model-vgg%d-fcl%d-fcs%d-%s.h5' % (cfg.vgglayers, cfg.fclayers, cfg.fclayersize, socket.gethostname()))
 if cfg.saveloadmodel and os.path.exists(cfg.modelid): 
     print("**** Loading existing model: %s ****" % cfg.modelid)
     model.load_weights(cfg.modelid)
 #%%
+import gc
 vizfilt = Viz_filters(model, img_input, img_rows, img_cols)
-trainstats = pd.DataFrame(columns=('Train loss', 'Test loss', 'Accuracy',))
+trainstats = pd.DataFrame(columns=('Train loss', 'Test loss', 'Accuracy', 'Train accuracy'))
 if os.path.exists(cfg.trainstats): trainstats = pd.read_csv(cfg.trainstats, dtype='float32')
 for e in range(cfg.nb_epoch):
     print('Training... epoch=%d/%d' % (e, cfg.nb_epoch))    
@@ -363,12 +391,15 @@ for e in range(cfg.nb_epoch):
                     steps_per_epoch=1,
                     epochs=1,
                     validation_data=(X_test, Y_test),
-                    verbose=0)               
+                    verbose=0)
+    tloss = model.evaluate(X_train, Y_train)
     if cfg.saveloadmodel and e % 50 == 0: model.save_weights(cfg.modelid, overwrite=True)
-    if e % 5 == 0: trainstats.to_csv(cfg.trainstats, index=False)
-    trainstats.loc[len(trainstats)] = (loss.history['loss'][0], loss.history['val_loss'][0], loss.history['val_acc'][0])
-    viz_losses(trainstats)
-    t_ind = random.randint(0, len(X_train) - 1)
-    if True or random.randint(0, 10) == 0: test_prediction(X_train[t_ind], Y_train[t_ind])
-    if e % 30 == 29 and cfg.vizfilt_timeout > 0: vizfilt.viz_filters(5)
-#    if e % 10 == 0 and cfg.vizfilt_timeout > 0: vizfilt.viz_filters(10)
+    trainstats.loc[len(trainstats)] = (loss.history['loss'][0], loss.history['val_loss'][0], loss.history['val_acc'][0], tloss[1])
+    if random.randint(0, 10) == 0 or True: 
+        trainstats.to_csv(cfg.trainstats, index=False)
+        viz_losses(trainstats)
+        t_ind = random.randint(0, len(X_train) - 1)        
+        test_prediction(X_train[t_ind], Y_train[t_ind])
+    if e % 30 == 29 and cfg.vizfilt_timeout > 0: vizfilt.viz_filters()
+    check_memusage()
+    gc.collect()
