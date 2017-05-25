@@ -16,7 +16,7 @@ np.seterr(divide='ignore', invalid='ignore')
 #os.environ['CUDA_VISIBLE_DEVICES'] = "1"
 #%%
 class ProjectConfig:
-    basepath      = os.path.join(os.getcwd(),"../../../data")
+    basepath      = "/home/lab.analytics.northwestern.edu/mpastor/Project/data1400_400"
 #    basepath      = os.path.join(os.getcwd(),"Documents/data")
     imsize        = (136,102) # n x n square images, VGG default is 224x224
     tsize         = imsize + (3,)
@@ -31,6 +31,7 @@ cfg.freeze_conv   = False     # Freeze convolutional layers
 cfg.fclayersize   = 128      # Size of fully connected layers
 cfg.fclayers      = 2        # Number of fully connected layers
 cfg.fcdropout     = 0.5      # Dropout factor for fully connected layers
+
  
 # Optimizer settings
 optimizer = Adam(lr=0.00005)   
